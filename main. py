@@ -1,15 +1,17 @@
 import datetime
+import os
+from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from collections import defaultdict
 import asyncio
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
-import os
 
-# PDF uchun reportlab o'rnatilishi kerak: `pip install reportlab`
+# .env faylini yuklash
+load_dotenv()
 
-# Tokenni qo'shish
-TOKEN = "BOT_TOKEN"
+# .env faylidan tokenni olish
+TOKEN = os.getenv("BOT_TOKEN")
 
 # Harajatlar ro'yxatini saqlash uchun bo'sh ro'yxat (sana, vaqt bilan birga)
 xarajatlar = []
@@ -57,7 +59,7 @@ async def handle_message(update, context):
                     nomi = " ".join(matn[:-1])
                     summa = float(matn[-1])
                     xarajatlar[index] = (sana, vaqt, nomi, summa)
-                    await update.message.reply_text(f"Tahrir18 so'm tahrirlandi: {nomi} - {summa:,.0f} so'm")
+                    await update.message.reply_text(f"Xarajat tahrirlandi: {nomi} - {summa:,.0f} so'm")
                 else:
                     await update.message.reply_text("Noto'g'ri indeks!")
             else:
