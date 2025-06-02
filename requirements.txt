@@ -1,3 +1,4 @@
 python-telegram-bot==20.0
 reportlab==3.6.12
 python-dotenv==1.0.0
+python-telegram-bot[job_queue]==<siz ishlatayotgan versiya>
