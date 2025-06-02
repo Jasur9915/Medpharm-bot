@@ -9,7 +9,7 @@ import os
 # PDF uchun reportlab o'rnatilishi kerak: `pip install reportlab`
 
 # Tokenni qo'shish
-TOKEN = "8116269873:AAEnl9QCBTFxT0xxySuKshd5lHIJ3Ybi1Lg"
+TOKEN = ""
 
 # Harajatlar ro'yxatini saqlash uchun bo'sh ro'yxat (sana, vaqt bilan birga)
 xarajatlar = []
