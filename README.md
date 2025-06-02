@@ -1,19 +1,9 @@
-# Expense Tracker Telegram Bot
+# Telegram Xarajatlar Bot
 
-Bu Telegram bot foydalanuvchilarga xarajatlarini qayd etish, tahrirlash, statistika ko'rish va kunlik, haftalik yoki oylik hisobotlarni PDF formatida olish imkonini beradi.
-
-## Imkoniyatlar
-- Xarajat qo'shish (masalan, `Ovqat 50000`)
-- Xarajatlar ro'yxatini ko'rish (`/list`)
-- Xarajatni tahrirlash (`/edit`)
-- Statistika ko'rish (`/stats`)
-- Kunlik hisobot (`/daily`)
-- Haftalik hisobot (`/weekly`)
-- Oylik hisobot (`/monthly`)
+Bu Telegram bot foydalanuvchilarga xarajatlarni boshqarish, kategoriyalar bo'yicha statistika ko'rish va kunlik, haftalik, oylik hisobotlarni PDF formatida olish imkonini beradi.
 
 ## O'rnatish
 
-1. **Repozitoriyni klonlash**:
+1. Repository-ni klonlang:
    ```bash
-   git clone https://github.com/<username>/expense-tracker-bot.git
-   cd expense-tracker-bot
+   git clone https://github.com/your_Jasur9915/your_repo.git
