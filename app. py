@@ -1,3 +1,4 @@
+print("Bot ishga tushdi")
 import datetime
 import os
 from dotenv import load_dotenv
