@@ -1,4 +1,6 @@
-.env
-__pycache__/
+expenses.db
 *.pyc
-*.pdf
+__pycache__/
+chart.png
+report.pdf
+*.json
