@@ -1,17 +1,15 @@
-# Finance Bot
+# ExpenseBot
+Telegram bot for tracking expenses with weekly, daily, and monthly reports, budget management, reminders, currency conversion, and Google Sheets integration.
 
-Bu Telegram bot foydalanuvchilarning daromad va xarajatlarini boshqarish, PDF hisobotlar yaratish va guruh hisoblarini yuritish uchun mo‘ljallangan.
+## Features
+- **Expense Tracking**: Add expenses with format `Category: Amount: Date` (e.g., `Food: 50000: 2025-06-04`).
+- **Reports**: Generate daily, weekly, or monthly reports in PDF format with pie charts.
+- **Budget Management**: Set daily, weekly, or monthly budgets with alerts at 80% usage.
+- **Reminders**: Daily reminders for expense entry (e.g., `/eslatma 20:00`).
+- **Currency Conversion**: Convert expenses to USD or other currencies (`/valyuta USD`).
+- **Google Sheets Integration**: Automatically sync expenses to Google Sheets.
 
-## Xususiyatlar
-- Daromad va xarajatlarni qo‘shish.
-- Kunlik, haftalik va oylik hisobotlarni PDF formatida yaratish.
-- Tranzaksiyalarni tahrirlash.
-- Umumiy statistika ko‘rsatish.
-- Guruhlarda umumiy hisob yuritish.
-
-## O‘rnatish
-
-1. **Repozitoriyani klonlash**:
+## Setup
+1. **Install Dependencies**:
    ```bash
-   git clone https://github.com/yourusername/finance-bot.git
-   cd finance-bot
+   pip install -r requirements.txt
