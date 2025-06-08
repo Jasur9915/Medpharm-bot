@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 # .env faylidan API_TOKEN ni o'qish
 load_dotenv()
-API_TOKEN = os.getenv("API_TOKEN", "8116269873:AAEnl9QCBTFxT0xxySuKshd5lHIJ3Ybi1Lg")
+API_TOKEN = os.getenv("API_TOKEN", "7580423031:AAEl11qAmdWyyZ2_1A9YgXgjS78jruWnYJc")
 
 # Ma'lumotlar bazasini sozlash
 def init_db():
