@@ -1,316 +1,232 @@
-import datetime
 import os
+import sqlite3
+from datetime import datetime, timedelta
+import pandas as pd
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from fpdf import FPDF
 from dotenv import load_dotenv
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from collections import defaultdict
-import asyncio
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
 
-# .env faylini yuklash
+# .env faylidan API_TOKEN ni o'qish
 load_dotenv()
+API_TOKEN = os.getenv("API_TOKEN", "8116269873:AAEnl9QCBTFxT0xxySuKshd5lHIJ3Ybi1Lg")
 
-# .env faylidan tokenni olish
-TOKEN = os.getenv("BOT_TOKEN")
+# Ma'lumotlar bazasini sozlash
+def init_db():
+    conn = sqlite3.connect("expenses.db")
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS expenses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    amount REAL,
+                    category TEXT,
+                    description TEXT,
+                    date TEXT,
+                    time TEXT
+                 )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS incomes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    amount REAL,
+                    description TEXT,
+                    date TEXT,
+                    time TEXT
+                 )''')
+    conn.commit()
+    conn.close()
 
-# Harajatlar ro'yxatini saqlash uchun bo'sh ro'yxat (sana, vaqt bilan birga)
-xarajatlar = []
-# Joriy kunni saqlash uchun o'zgaruvchi
-joriy_kun = datetime.datetime.now().strftime("%d.%m.%Y")
+# Harajat qo'shish
+async def add_expense(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Iltimos, harajat miqdorini yozing (masalan: 50000):")
+    context.user_data["state"] = "awaiting_expense_amount"
 
-async def check_new_day(context):
-    global joriy_kun
-    while True:
-        hozir = datetime.datetime.now()
-        if hozir.hour == 0 and hozir.minute == 0:
-            joriy_kun = hozir.strftime("%d.%m.%Y")
-        await asyncio.sleep(60)  # Har daqiqada tekshirish
+# Daromad qo'shish
+async def add_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Iltimos, daromad miqdorini yozing (masalan: 1000000):")
+    context.user_data["state"] = "awaiting_income_amount"
 
-async def start(update, context):
-    await update.message.reply_text("Xarajatlar botiga xush kelibsiz! /help buyrug'i bilan ko'rsatmalarni ko'ring.")
+# Kategoriyalarni tanlash
+def get_category_keyboard():
+    categories = ["Oziq-ovqat", "Transport", "Kommunal", "Kiyim", "Sog‘liq", "Boshqa"]
+    keyboard = [[InlineKeyboardButton(cat, callback_data=f"cat_{cat}") for cat in categories[i:i+2]] for i in range(0, len(categories), 2)]
+    return InlineKeyboardMarkup(keyboard)
 
-async def help_command(update, context):
-    await update.message.reply_text(
-        "Buyruqlar:\n/start - Botni boshlash\n/help - Yordam\n/list - Xarajatlar ro'yxatini ko'rish\n/edit - Xarajatni tahrirlash\n/stats - Statistika ko'rish\n/daily - Kunlik hisobot (PDF)\n/weekly - Haftalik hisobot (PDF)\n/monthly - Oylik hisobot (PDF)\n\nXarajat qo'shish uchun to'g'ridan-to'g'ri yozing (masalan: 'Ovqat 50000')"
-    )
+# Xabarlar bilan ishlash
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    text = update.message.text
+    state = context.user_data.get("state")
 
-# PDF fayl yaratish funksiyasi
-def create_pdf(filename, title, data):
-    c = canvas.Canvas(filename, pagesize=A4)
-    c.setFont("Helvetica", 12)
-    c.drawString(100, 800, title)
-    y = 750
-    for line in data:
-        c.drawString(100, y, line)
-        y -= 20
-        if y < 50:
-            c.showPage()
-            y = 750
-    c.save()
-
-async def handle_message(update, context):
-    if context.user_data.get('state') == 2:  # Xarajat tahrirlash
+    if state == "awaiting_expense_amount":
         try:
-            matn = update.message.text.split()
-            if len(matn) >= 2:
-                index = context.user_data['edit_index']
-                if 0 <= index < len(xarajatlar):
-                    sana, vaqt, _, _ = xarajatlar[index]
-                    nomi = " ".join(matn[:-1])
-                    summa = float(matn[-1])
-                    xarajatlar[index] = (sana, vaqt, nomi, summa)
-                    await update.message.reply_text(f"Xarajat tahrirlandi: {nomi} - {summa:,.0f} so'm")
-                else:
-                    await update.message.reply_text("Noto'g'ri indeks!")
-            else:
-                await update.message.reply_text("Noto'g'ri format! Namuna: 'Ovqat 50000'")
+            amount = float(text)
+            context.user_data["expense_amount"] = amount
+            context.user_data["state"] = "awaiting_category"
+            await update.message.reply_text("Kategoriyani tanlang:", reply_markup=get_category_keyboard())
         except ValueError:
-            await update.message.reply_text("Iltimos, to'g'ri summa kiriting!")
-        context.user_data['state'] = 0
-
-    elif context.user_data.get('state') == 3:  # Indeks kiritish (tahrirlash uchun)
+            await update.message.reply_text("Iltimos, to‘g‘ri miqdor kiriting (masalan: 50000).")
+    
+    elif state == "awaiting_income_amount":
         try:
-            index = int(update.message.text)
-            if 0 <= index < len(xarajatlar):
-                context.user_data['edit_index'] = index
-                await update.message.reply_text("Yangi xarajat nomini va summasini kiriting (masalan: 'Ovqat 60000')")
-                context.user_data['state'] = 2
-            else:
-                await update.message.reply_text("Noto'g'ri indeks! Iltimos, ro'yxatdagi indekslardan birini tanlang.")
+            amount = float(text)
+            context.user_data["income_amount"] = amount
+            context.user_data["state"] = "awaiting_income_description"
+            await update.message.reply_text("Daromad haqida qisqacha ma'lumot yozing (masalan: Ish haqi):")
         except ValueError:
-            await update.message.reply_text("Iltimos, to'g'ri indeks kiriting (raqam bo'lishi kerak).")
+            await update.message.reply_text("Iltimos, to‘g‘ri miqdor kiriting (masalan: 1000000).")
+    
+    elif state == "awaiting_income_description":
+        description = text
+        date = datetime.now().strftime("%Y-%m-%d")
+        time = datetime.now().strftime("%H:%M")
+        conn = sqlite3.connect("expenses.db")
+        c = conn.cursor()
+        c.execute("INSERT INTO incomes (user_id, amount, description, date, time) VALUES (?, ?, ?, ?, ?)",
+                  (user_id, context.user_data["income_amount"], description, date, time))
+        conn.commit()
+        conn.close()
+        await update.message.reply_text("Daromad muvaffaqiyatli qo‘shildi!")
+        context.user_data.clear()
 
-    else:  # Xarajat qo'shish
-        try:
-            matn = update.message.text.split()
-            if len(matn) >= 2:
-                nomi = " ".join(matn[:-1])
-                summa = float(matn[-1])
-                global joriy_kun
-                # Joriy vaqtni olish (soat va daqiqa)
-                joriy_vaqt = datetime.datetime.now().strftime("%H:%M")
-                xarajatlar.append((joriy_kun, joriy_vaqt, nomi, summa))
-                index = len(xarajatlar) - 1  # Oxirgi qo'shilgan xarajatning indeksi
+# Kategoriya tanlash
+async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    category = query.data.replace("cat_", "")
+    context.user_data["category"] = category
+    context.user_data["state"] = "awaiting_description"
+    await query.message.reply_text("Harajat haqida qisqacha ma'lumot yozing (masalan: Non sotib oldim):")
 
-                # Kunlik summani hisoblash
-                kunlik_summa = sum(s for s, _, _, summa in xarajatlar if s == joriy_kun)
+# Tavsifni saqlash
+async def handle_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    description = update.message.text
+    amount = context.user_data["expense_amount"]
+    category = context.user_data["category"]
+    date = datetime.now().strftime("%Y-%m-%d")
+    time = datetime.now().strftime("%H:%M")
+    
+    conn = sqlite3.connect("expenses.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO expenses (user_id, amount, category, description, date, time) VALUES (?, ?, ?, ?, ?, ?)",
+              (user_id, amount, category, description, date, time))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text("Harajat muvaffaqiyatli qo‘shildi!")
+    context.user_data.clear()
 
-                # Tasdiqlovchi xabar
-                javob = (
-                    f"📅 Sana/Date: {joriy_kun}\n"
-                    f"⏰ Vaqt: {joriy_vaqt}\n"
-                    f"📋 Qator/Indeks: [{index}]\n"
-                    f"💸 Xarajat: {nomi} - {summa:,.0f} so'm qo'shildi.\n"
-                    f"📈 Bugungi umumiy xarajat: {kunlik_summa:,.0f} so'm\n"
-                )
+# Hisobot yaratish (PDF)
+async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    period = context.args[0] if context.args else "kunlik"
+    
+    conn = sqlite3.connect("expenses.db")
+    c = conn.cursor()
+    
+    if period == "kunlik":
+        start_date = datetime.now().strftime("%Y-%m-%d")
+        c.execute("SELECT * FROM expenses WHERE user_id = ? AND date = ?", (user_id, start_date))
+        expenses = c.fetchall()
+        c.execute("SELECT * FROM incomes WHERE user_id = ? AND date = ?", (user_id, start_date))
+        incomes = c.fetchall()
+    elif period == "haftalik":
+        start_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        c.execute("SELECT * FROM expenses WHERE user_id = ? AND date >= ?", (user_id, start_date))
+        expenses = c.fetchall()
+        c.execute("SELECT * FROM incomes WHERE user_id = ? AND date >= ?", (user_id, start_date))
+        incomes = c.fetchall()
+    elif period == "oylik":
+        start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        c.execute("SELECT * FROM expenses WHERE user_id = ? AND date >= ?", (user_id, start_date))
+        expenses = c.fetchall()
+        c.execute("SELECT * FROM incomes WHERE user_id = ? AND date >= ?", (user_id, start_date))
+        incomes = c.fetchall()
+    
+    conn.close()
+    
+    # PDF yaratish
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=f"{period.capitalize()} Hisobot", ln=True, align="C")
+    
+    pdf.cell(200, 10, txt="Harajatlar:", ln=True)
+    total_expense = 0
+    for i, expense in enumerate(expenses, 1):
+        amount, category, desc, date, time = expense[2], expense[3], expense[4], expense[5], expense[6]
+        total_expense += amount
+        pdf.cell(200, 10, txt=f"{i}. {date} {time} - {category}: {desc} - {amount} UZS", ln=True)
+    
+    pdf.cell(200, 10, txt=f"Umumiy harajat: {total_expense} UZS", ln=True)
+    
+    pdf.cell(200, 10, txt="Daromadlar:", ln=True)
+    total_income = 0
+    for i, income in enumerate(incomes, 1):
+        amount, desc, date, time = income[2], income[3], income[4], income[5]
+        total_income += amount
+        pdf.cell(200, 10, txt=f"{i}. {date} {time} - {desc}: {amount} UZS", ln=True)
+    
+    pdf.cell(200, 10, txt=f"Umumiy daromad: {total_income} UZS", ln=True)
+    pdf.cell(200, 10, txt=f"Balans: {total_income - total_expense} UZS", ln=True)
+    
+    pdf_file = f"{period}_hisobot.pdf"
+    pdf.output(pdf_file)
+    await update.message.reply_document(document=open(pdf_file, "rb"))
+    os.remove(pdf_file)
 
-                # Agar avvalgi xarajat bo'lsa, uni ko'rsatish
-                if index > 0:  # Avvalgi xarajat mavjud bo'lsa
-                    avvalgi_sana, avvalgi_vaqt, avvalgi_nomi, avvalgi_summa = xarajatlar[index - 1]
-                    javob += (
-                        f"\n📜 Avvalgi xarajat:\n"
-                        f"📅 Sana/Date: {avvalgi_sana}\n"
-                        f"⏰ Vaqt: {avvalgi_vaqt}\n"
-                        f"📋 Qator/Indeks: [{index - 1}]\n"
-                        f"💸 Xarajat: {avvalgi_nomi} - {avvalgi_summa:,.0f} so'm"
-                    )
+# Statistika
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    conn = sqlite3.connect("expenses.db")
+    c = conn.cursor()
+    c.execute("SELECT category, SUM(amount) as total FROM expenses WHERE user_id = ? GROUP BY category", (user_id,))
+    stats = c.fetchall()
+    conn.close()
+    
+    response = "Statistika (kategoriyalar bo‘yicha):\n"
+    for category, total in stats:
+        response += f"{category}: {total} UZS\n"
+    await update.message.reply_text(response or "Hozircha statistika yo‘q.")
 
-                await update.message.reply_text(javob)
+# Bosh menu
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("Harajat qo‘shish", callback_data="add_expense")],
+        [InlineKeyboardButton("Daromad qo‘shish", callback_data="add_income")],
+        [InlineKeyboardButton("Kunlik hisobot", callback_data="report_kunlik")],
+        [InlineKeyboardButton("Haftalik hisobot", callback_data="report_haftalik")],
+        [InlineKeyboardButton("Oylik hisobot", callback_data="report_oylik")],
+        [InlineKeyboardButton("Statistika", callback_data="stats")]
+    ]
+    await update.message.reply_text("Xush kelibsiz! Quyidagi amallarni tanlang:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-                # Rasmdagi kabi formatda yozish (vaqt bilan birga)
-                guruhlangan_xarajatlar = {}
-                for idx, (sana, vaqt, nomi, summa) in enumerate(xarajatlar):
-                    if sana not in guruhlangan_xarajatlar:
-                        guruhlangan_xarajatlar[sana] = []
-                    guruhlangan_xarajatlar[sana].append((idx, vaqt, nomi, summa))
-
-                yozuv = ""
-                for sana, xarajat_list in guruhlangan_xarajatlar.items():
-                    yozuv += f"📅 Дата/Date: {sana}\n"
-                    for idx, (index, vaqt, nomi, summa) in enumerate(xarajat_list, 1):
-                        yozuv += f"{idx}. {nomi} - {summa:,.0f} ({vaqt})\n"
-                    yozuv += "\n"
-
-                await update.message.reply_text(yozuv.strip())
-            else:
-                await update.message.reply_text("Noto'g'ri format! Namuna: 'Ovqat 50000'")
-        except ValueError:
-            await update.message.reply_text("Iltimos, to'g'ri summa kiriting!")
-
-async def list_xarajat(update, context):
-    if not xarajatlar:
-        await update.message.reply_text("Xarajatlar ro'yxati bo'sh!")
-        return
+# Tugma bosilishlarini boshqarish
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     
-    guruhlangan_xarajatlar = {}
-    for index, (sana, vaqt, nomi, summa) in enumerate(xarajatlar):
-        if sana not in guruhlangan_xarajatlar:
-            guruhlangan_xarajatlar[sana] = []
-        guruhlangan_xarajatlar[sana].append((index, vaqt, nomi, summa))
-    
-    javob = "\nHarajatlar ro'yxati (kunlik):\n"
-    for sana, xarajat_list in guruhlangan_xarajatlar.items():
-        kunlik_summa = sum(summa for _, _, _, summa in xarajat_list)
-        javob += f"\n📅 Дата/Date: {sana} (Umumiy: {kunlik_summa:,.0f} so'm)\n"
-        for idx, (index, vaqt, nomi, summa) in enumerate(xarajat_list, 1):
-            javob += f"{idx}. {nomi} - {summa:,.0f} ({vaqt}) (Indeks: {index})\n"
-    
-    await update.message.reply_text(javob)
-
-async def daily_report(update, context):
-    if not xarajatlar:
-        await update.message.reply_text("Xarajatlar ro'yxati bo'sh!")
-        return
-    
-    guruhlangan_xarajatlar = {}
-    for index, (sana, vaqt, nomi, summa) in enumerate(xarajatlar):
-        if sana not in guruhlangan_xarajatlar:
-            guruhlangan_xarajatlar[sana] = []
-        guruhlangan_xarajatlar[sana].append((index, vaqt, nomi, summa))
-    
-    data = []
-    for sana, xarajat_list in guruhlangan_xarajatlar.items():
-        if sana == joriy_kun:
-            kunlik_summa = sum(summa for _, _, _, summa in xarajat_list)
-            data.append(f"Дата/Date: {sana} (Umumiy: {kunlik_summa:,.0f} so'm)")
-            for idx, (index, vaqt, nomi, summa) in enumerate(xarajat_list, 1):
-                data.append(f"{idx}. {nomi} - {summa:,.0f} ({vaqt})")
-            data.append("")
-    
-    filename = f"daily_report_{joriy_kun.replace('.', '_')}.pdf"
-    create_pdf(filename, f"Kunlik Hisobot - {joriy_kun}", data)
-    with open(filename, 'rb') as file:
-        await update.message.reply_document(document=file, filename=filename)
-    os.remove(filename)
-
-async def weekly_report(update, context):
-    if not xarajatlar:
-        await update.message.reply_text("Xarajatlar ro'yxati bo'sh!")
-        return
-    
-    today = datetime.datetime.now()
-    start_of_week = today - datetime.timedelta(days=today.weekday())
-    end_of_week = start_of_week + datetime.timedelta(days=6)
-    
-    data = []
-    for day in range(7):
-        current_day = (start_of_week + datetime.timedelta(days=day)).strftime("%d.%m.%Y")
-        guruhlangan_xarajatlar = {}
-        for index, (sana, vaqt, nomi, summa) in enumerate(xarajatlar):
-            if sana not in guruhlangan_xarajatlar:
-                guruhlangan_xarajatlar[sana] = []
-            guruhlangan_xarajatlar[sana].append((index, vaqt, nomi, summa))
-        
-        if current_day in guruhlangan_xarajatlar:
-            xarajat_list = guruhlangan_xarajatlar[current_day]
-            kunlik_summa = sum(summa for _, _, _, summa in xarajat_list)
-            data.append(f"Дата/Date: {current_day} (Umumiy: {kunlik_summa:,.0f} so'm)")
-            for idx, (index, vaqt, nomi, summa) in enumerate(xarajat_list, 1):
-                data.append(f"{idx}. {nomi} - {summa:,.0f} ({vaqt})")
-            data.append("")
-    
-    filename = f"weekly_report_{start_of_week.strftime('%d.%m.%Y')}_to_{end_of_week.strftime('%d.%m.%Y')}.pdf"
-    create_pdf(filename, f"Haftalik Hisobot ({start_of_week.strftime('%d.%m.%Y')} - {end_of_week.strftime('%d.%m.%Y')})", data)
-    with open(filename, 'rb') as file:
-        await update.message.reply_document(document=file, filename=filename)
-    os.remove(filename)
-
-async def monthly_report(update, context):
-    if not xarajatlar:
-        await update.message.reply_text("Xarajatlar ro'yxati bo'sh!")
-        return
-    
-    today = datetime.datetime.now()
-    oy = today.strftime("%m.%Y")
-    
-    guruhlangan_xarajatlar = {}
-    for index, (sana, vaqt, nomi, summa) in enumerate(xarajatlar):
-        if sana not in guruhlangan_xarajatlar:
-            guruhlangan_xarajatlar[sana] = []
-        guruhlangan_xarajatlar[sana].append((index, vaqt, nomi, summa))
-    
-    data = []
-    oylik_summa = 0
-    for sana, xarajat_list in guruhlangan_xarajatlar.items():
-        if sana.endswith(oy):
-            kunlik_summa = sum(summa for _, _, _, summa in xarajat_list)
-            oylik_summa += kunlik_summa
-            data.append(f"Дата/Date: {sana} (Umumiy: {kunlik_summa:,.0f} so'm)")
-            for idx, (index, vaqt, nomi, summa) in enumerate(xarajat_list, 1):
-                data.append(f"{idx}. {nomi} - {summa:,.0f} ({vaqt})")
-            data.append("")
-    
-    data.insert(0, f"Oylik Umumiy Xarajat: {oylik_summa:,.0f} so'm")
-    data.insert(1, "")
-    
-    filename = f"monthly_report_{oy.replace('.', '_')}.pdf"
-    create_pdf(filename, f"Oylik Hisobot - {oy}", data)
-    with open(filename, 'rb') as file:
-        await update.message.reply_document(document=file, filename=filename)
-    os.remove(filename)
-
-async def edit_xarajat(update, context):
-    if not xarajatlar:
-        await update.message.reply_text("Xarajatlar ro'yxati bo'sh!")
-        return
-    
-    await list_xarajat(update, context)
-    await update.message.reply_text("Tahrirlamoqchi bo'lgan xarajatning indeksini kiriting (masalan, 0, 1, 2...)")
-    context.user_data['state'] = 3
-
-async def stats(update, context):
-    if not xarajatlar:
-        await update.message.reply_text("Xarajatlar ro'yxati bo'sh!")
-        return
-    
-    # Umumiy statistika
-    umumiy_summa = sum(summa for _, _, _, summa in xarajatlar)
-    
-    # Kunlik statistika
-    kunlik_summa = defaultdict(float)
-    for sana, _, _, summa in xarajatlar:
-        kunlik_summa[sana] += summa
-    
-    # Kategoriyalar bo'yicha statistika
-    kategoriya_summa = defaultdict(float)
-    for _, _, nomi, summa in xarajatlar:
-        kategoriya_summa[nomi] += summa
-    
-    # Eng ko'p xarajat qilingan kategoriya
-    eng_kop_kategoriya = max(kategoriya_summa.items(), key=lambda x: x[1], default=("Noma'lum", 0))
-
-    javob = "📊 Statistika:\n\n"
-    javob += f"💰 Umumiy xarajat: {umumiy_summa:,.0f} so'm\n\n"
-    
-    javob += "📅 Kunlik xarajatlar:\n"
-    for sana, summa in kunlik_summa.items():
-        javob += f"{sana}: {summa:,.0f} so'm\n"
-    
-    javob += "\n📈 Kategoriyalar bo'yicha:\n"
-    for nomi, summa in kategoriya_summa.items():
-        javob += f"{nomi} - {summa:,.0f} so'm\n"
-    
-    javob += f"\n🏆 Eng ko'p xarajat qilingan kategoriya: {eng_kop_kategoriya[0]} ({eng_kop_kategoriya[1]:,.0f} so'm)"
-    
-    await update.message.reply_text(javob)
+    if query.data == "add_expense":
+        await add_expense(query, context)
+    elif query.data == "add_income":
+        await add_income(query, context)
+    elif query.data.startswith("report_"):
+        period = query.data.replace("report_", "")
+        await generate_report(query, context)
+    elif query.data == "stats":
+        await stats(query, context)
+    elif query.data.startswith("cat_"):
+        await handle_category(update, context)
 
 def main():
-    app = Application.builder().token(TOKEN).build()
-
+    init_db()
+    app = Application.builder().token(API_TOKEN).build()
+    
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("list", list_xarajat))
-    app.add_handler(CommandHandler("edit", edit_xarajat))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("daily", daily_report))
-    app.add_handler(CommandHandler("weekly", weekly_report))
-    app.add_handler(CommandHandler("monthly", monthly_report))
-    app.add_handler(MessageHandler(filters.Text() & ~filters.Command(), handle_message))
+    app.add_handler(CallbackQueryHandler(button))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    app.run_polling()
 
-    # Kun yangilanishini tekshirish uchun vazifani ishga tushirish
-    app.job_queue.run_repeating(check_new_day, interval=60, first=0)
-
-    app.run_polling(allowed_updates=["message", "callback_query"])
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
