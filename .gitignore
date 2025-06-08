@@ -1,7 +1,0 @@
-expenses.db
-*.pyc
-__pycache__/
-chart.png
-report.pdf
-*.json
-.env 
