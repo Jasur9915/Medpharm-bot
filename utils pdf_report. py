@@ -1,0 +1,23 @@
+from fpdf import FPDF
+from datetime import datetime
+
+def generate_pdf(username, entries):
+    filename = f"{username.replace(' ', '_')}_hisobot.pdf"
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(200, 10, txt="Medpharm xisoboti", ln=True, align='C')
+    pdf.ln(10)
+
+    pdf.set_font("Arial", size=12)
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    pdf.cell(200, 10, txt=f"Sana: {current_date}", ln=True)
+    pdf.cell(200, 10, txt=f"Foydalanuvchi: {username}", ln=True)
+    pdf.ln(5)
+
+    for entry in entries:
+        line = f"{entry['date']} - {entry['item']} – {entry['amount']} {entry['unit']}"
+        pdf.cell(200, 8, txt=line, ln=True)
+
+    pdf.output(filename)
+    return filename
