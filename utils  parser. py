@@ -1,0 +1,12 @@
+import re
+
+def parse_entry(text):
+    pattern = r"(?P<item>\w[\w\s]*)\s+(?P<amount>\d+[.,]?\d*)\s*(?P<unit>\w+)?"
+    match = re.match(pattern, text.strip())
+    if match:
+        return {
+            "item": match.group("item").strip(),
+            "amount": float(match.group("amount").replace(',', '.')),
+            "unit": match.group("unit") or ""
+        }
+    return None
