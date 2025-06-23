@@ -1,0 +1,16 @@
+entries_by_user = {}
+
+def add_entry(entry):
+    uid = entry["user_id"]
+    if uid not in entries_by_user:
+        entries_by_user[uid] = []
+    entries_by_user[uid].append(entry)
+
+def get_user_report(user_id):
+    return entries_by_user.get(user_id, []).copy()
+
+def delete_last_entry(user_id):
+    if user_id in entries_by_user and entries_by_user[user_id]:
+        entries_by_user[user_id].pop()
+        return True
+    return False
