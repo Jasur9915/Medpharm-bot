@@ -1,2 +1,4 @@
+setuptools
+wheel
 aiogram==3.4.1
 fpdf2==2.7.8
