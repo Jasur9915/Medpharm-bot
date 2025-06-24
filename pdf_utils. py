@@ -1,0 +1,30 @@
+from fpdf import FPDF
+from datetime import datetime
+from io import BytesIO
+
+def create_pdf(entries, chat_id):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+
+    pdf.cell(0, 10, f"Guruh ID: {chat_id} – Hisobot", ln=True)
+
+    summary = {}
+
+    for e in entries:
+        key = f"{e['name']} ({e['place']})"
+        summary[key] = summary.get(key, 0) + e['amount']
+        line = f"{e['date']} – {e['name']}: {e['amount']} {e['unit']} ({e['place']})"
+        pdf.cell(0, 10, line, ln=True)
+
+    pdf.ln(10)
+    pdf.set_font("Arial", "B", size=12)
+    pdf.cell(0, 10, "📊 Umumiy yig‘indilar:", ln=True)
+
+    for k, v in summary.items():
+        pdf.cell(0, 10, f"{k}: {v}", ln=True)
+
+    buffer = BytesIO()
+    pdf.output(buffer)
+    buffer.seek(0)
+    return buffer
