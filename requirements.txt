@@ -1,0 +1,5 @@
+aiogram==3.4.1
+reportlab
+aiohttp>=3.9.0
+python-dotenv
+matplotlib
