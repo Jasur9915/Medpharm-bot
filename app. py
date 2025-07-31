@@ -1,0 +1,175 @@
+from flask import Flask, render_template, request, redirect, session
+import sqlite3
+import os
+from datetime import datetime
+from collections import Counter
+
+app = Flask(__name__)
+app.secret_key = "aqlli_yuk_tizimi_2025"
+
+# Ma'lumotlar bazasini yaratish
+def init_db():
+    with sqlite3.connect("database.db") as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS bronlar (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mijoz_ismi TEXT,
+                telefon TEXT,
+                mahsulot TEXT,
+                narx TEXT,
+                holat TEXT,
+                sana TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE,
+                password TEXT
+            )
+        """)
+        try:
+            conn.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "1234"))
+            conn.commit()
+        except:
+            pass
+
+# AI-o'xshagan tahlil
+def aqlli_tahlil():
+    with sqlite3.connect("database.db") as conn:
+        all_data = conn.execute("SELECT * FROM bronlar ORDER BY sana DESC").fetchall()
+        stats = conn.execute("""
+            SELECT 
+                COUNT(*) as jami,
+                SUM(CASE WHEN holat='Chiqdi' THEN 1 ELSE 0 END) as chiqqan,
+                SUM(CASE WHEN holat='Yangi' THEN 1 ELSE 0 END) as yangi,
+                SUM(CASE WHEN holat='Chiqdi' THEN CAST(narx AS INTEGER) ELSE 0 END) as daromad
+            FROM bronlar
+        """).fetchone()
+
+        # Eng ko'p mijoz
+        cursor = conn.execute("SELECT mijoz_ismi, COUNT(*) as cnt FROM bronlar GROUP BY mijoz_ismi ORDER BY cnt DESC LIMIT 1")
+        eng_kop = cursor.fetchone()
+
+    # O'rtacha daromad
+    o_r = stats[4] / stats[1] if stats[1] else 0
+
+    # AI-maslahat
+    if stats[1] >= 10:
+        maslahat = "🎉 A'lo! Siz yuqori natijalarga erishyapsiz. Keyingi maqsad: kuniga 7 ta yuk."
+    elif stats[1] >= 5:
+        maslahat = "✅ Yaxshi ishlamoqdasiz. Kuniga 5 tagacha chiqarishni oshiring."
+    elif stats[1] == 0 and stats[2] == 0:
+        maslahat = "💡 Hali hech qanday yuk kiritilmagan. Birinchi yukni qo'shing!"
+    elif stats[1] == 0:
+        maslahat = "❗ Hali hech narsa chiqmagan. Chiqarish tugmasini bosing."
+    else:
+        maslahat = "💡 Ko'proq doimiy mijozlarga ega bo'ling. Ularga chegirma berishni o'ylab ko'ring."
+
+    # Eslatma
+    eslatma = ""
+    if stats[2] >= 5:
+        eslatma = f"⚠️ Diqqat! {stats[2]} ta yuk hali chiqmagan. Ularni ertaga chiqaring!"
+    elif stats[2] >= 3:
+        eslatma = f"🔔 {stats[2]} ta yuk hali chiqmagan. Tezroq qiling!"
+
+    return {
+        "stats": stats,
+        "eng_kop_mijoz": eng_kop[0] if eng_kop else "—",
+        "maslahat": maslahat,
+        "eslatma": eslatma,
+        "o_r": round(o_r, 0),
+        "bugun": datetime.now().strftime("%d %B, %Y")
+    }
+
+@app.route('/')
+def index():
+    if 'username' not in session:
+        return redirect('/login')
+
+    search = request.args.get('q', '')
+    query = f"%{search}%"
+    with sqlite3.connect("database.db") as conn:
+        cursor = conn.execute("""
+            SELECT * FROM bronlar 
+            WHERE mijoz_ismi LIKE ? OR mahsulot LIKE ? OR telefon LIKE ?
+            ORDER BY id DESC
+        """, (query, query, query))
+        bronlar = cursor.fetchall()
+
+    ai = aqlli_tahlil()
+    return render_template('index.html', bronlar=bronlar, search=search, ai=ai)
+
+@app.route('/yuk_qoshish', methods=['POST'])
+def yuk_qoshish():
+    if 'username' not in session:
+        return redirect('/login')
+
+    text = request.form.get('text', '').strip()
+    if not text:
+        return "Matn kiriting!", 400
+
+    parts = [p.strip() for p in text.split(",")]
+    ism = parts[0] if len(parts) > 0 else "Noma'lum"
+    telefon = parts[1] if len(parts) > 1 else ""
+    mahsulot = parts[2] if len(parts) > 2 else "Noma'lum"
+
+    sana = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    with sqlite3.connect("database.db") as conn:
+        conn.execute("""
+            INSERT INTO bronlar (mijoz_ismi, telefon, mahsulot, narx, holat, sana) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (ism, telefon, mahsulot, "", "Yangi", sana))
+
+    return redirect('/')
+
+@app.route('/chiqarish/<int:bron_id>', methods=['POST'])
+def chiqarish(bron_id):
+    if 'username' not in session:
+        return redirect('/login')
+    narx = request.form.get('narx', '').strip()
+    if not narx or not narx.isdigit():
+        return "Narx faqat raqamlardan iborat bo'lishi kerak!", 400
+    with sqlite3.connect("database.db") as conn:
+        conn.execute("UPDATE bronlar SET holat='Chiqdi', narx=? WHERE id=?", (narx, bron_id))
+    return redirect('/')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        with sqlite3.connect("database.db") as conn:
+            user = conn.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password)).fetchone()
+            if user:
+                session['username'] = username
+                return redirect('/')
+            else:
+                return "Login yoki parol xato!", 401
+    return '''
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
+        .form { max-width: 400px; margin: auto; padding: 30px; background: white; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+        button { background: #1877f2; color: white; border: none; padding: 12px; width: 100%; border-radius: 5px; font-size: 16px; }
+        h2 { color: #1877f2; }
+    </style>
+    <div class="form">
+        <h2>🧠 Aqlli Yuk Tizimi</h2>
+        <form method="post">
+            <input type="text" name="username" placeholder="Foydalanuvchi" required><br>
+            <input type="password" name="password" placeholder="Parol" required><br>
+            <button type="submit">Kirish</button>
+        </form>
+    </div>
+    '''
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return redirect('/login')
+
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True, host='0.0.0.0', port=5000)
