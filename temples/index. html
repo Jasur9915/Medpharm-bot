@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bronlar Ro'yxati</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; padding: 10px; }
+        .bron { border: 1px solid #ccc; margin: 10px 0; padding: 10px; border-radius: 10px; }
+        .yangi { background: #e0f7fa; }
+        .chiqdi { background: #c8e6c9; }
+    </style>
+</head>
+<body>
+    <h2>Yuk qo'shish</h2>
+    <form method="POST" action="/yuk_qoshish">
+        Ismingiz: <input type="text" name="ism" required><br>
+        Mahsulot: <input type="text" name="mahsulot" required><br>
+        <button type="submit">Qo‘shish</button>
+    </form>
+
+    <h2>Bronlar</h2>
+    {% for b in bronlar %}
+        <div class="bron {{ 'yangi' if b[4] == 'Yangi' else 'chiqdi' }}">
+            <b>{{ b[1] }}</b> - {{ b[2] }} <br>
+            Narx: {{ b[3] }} | Holat: {{ b[4] }}
+            {% if b[4] == 'Yangi' %}
+                <form method="POST" action="/chiqarish/{{ b[0] }}">
+                    Narx: <input type="text" name="narx" required>
+                    <button type="submit">Chiqdi deb belgilash</button>
+                </form>
+            {% endif %}
+        </div>
+    {% endfor %}
+</body>
+</html>
